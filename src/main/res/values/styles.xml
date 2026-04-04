@@ -1,0 +1,11 @@
+<resources>
+    <style name="Theme.App.Starting" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">#000000</item>
+        <item name="windowSplashScreenAnimatedIcon">@mipmap/heywear</item>
+        <item name="windowSplashScreenIconBackgroundColor">#000000</item>
+     <item name="postSplashScreenTheme">@style/Theme.Wearbox</item>
+    </style>
+
+    <style name="Theme.Wearbox" parent="android:Theme.DeviceDefault">
+    </style>
+</resources>
