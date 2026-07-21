@@ -1,6 +1,6 @@
 plugins {
-    id("com.android.application")
-    id("org.jetbrains.kotlin.android")
+    id("com.android.application") version "8.7.3"
+    id("org.jetbrains.kotlin.android") version "2.0.21"
     id("org.jetbrains.kotlin.plugin.compose") version "2.0.21"
 }
 
@@ -80,5 +80,7 @@ dependencies {
     implementation("org.jsoup:jsoup:1.15.4")
     implementation("androidx.compose.material:material-icons-extended:1.6.7")
     implementation("io.coil-kt:coil-gif:2.6.0")
+
+    testImplementation("junit:junit:4.13.2")
 
 }

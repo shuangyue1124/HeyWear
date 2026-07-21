@@ -44,9 +44,11 @@ import com.m16a4666.heywear.model.HeyPost
 import com.m16a4666.heywear.utils.CookieUtil
 import com.m16a4666.heywear.utils.DeviceUtil
 import com.m16a4666.heywear.utils.FileLogger
+import com.m16a4666.heywear.utils.HeyboxApiStatus
 import com.m16a4666.heywear.utils.HeyboxSigner
 import com.m16a4666.heywear.utils.ImageSaver
 import com.m16a4666.heywear.utils.SettingsUtil
+import com.m16a4666.heywear.utils.evaluateHeyboxApiStatus
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -74,6 +76,7 @@ fun PostDetailScreen(post: HeyPost, onBack: () -> Unit) {
 
     var viewMode by remember { mutableStateOf("loading") }
     var errorMsg by remember { mutableStateOf("") }
+    var warningMsg by remember { mutableStateOf("") }
     var showFullImage by remember { mutableStateOf<String?>(null) }
 
     // 评论区显示状态
@@ -157,13 +160,55 @@ fun PostDetailScreen(post: HeyPost, onBack: () -> Unit) {
                 val jsonStr = conn.inputStream.bufferedReader().readText()
                 val root = JSONObject(jsonStr)
 
-                // 错误处理
-                if (root.optString("status") == "failed") {
-                    throw Exception("API Error: ${root.optString("msg")} (${root.optString("code")})")
+                val apiStatus = evaluateHeyboxApiStatus(
+                    status = root.optString("status"),
+                    message = root.optString("msg")
+                )
+                if (apiStatus is HeyboxApiStatus.Rejected) {
+                    withContext(Dispatchers.Main) {
+                        warningMsg = "${apiStatus.message}，已显示列表中的缓存内容"
+                        headerInfo = ContentNode.HeaderNode(
+                            post.title,
+                            post.author,
+                            post.avatar,
+                            ""
+                        )
+                        momentImages = post.images
+                        fullDescription = post.description
+                        momentHasVideo = false
+                        viewMode = "moment"
+                    }
+                    FileLogger.write(
+                        context,
+                        "PostDetailFallback",
+                        "status=${apiStatus.status}, linkId=${post.linkId}"
+                    )
+                    return@withContext
                 }
 
-                val resultObj = root.optJSONObject("result") ?: throw Exception("No Result: $jsonStr")
-                val linkObj = resultObj.optJSONObject("link") ?: throw Exception("Link is NULL!")
+                val resultObj = root.optJSONObject("result")
+                val linkObj = resultObj?.optJSONObject("link")
+                if (linkObj == null) {
+                    withContext(Dispatchers.Main) {
+                        warningMsg = "详情接口未返回帖子内容，已显示列表中的缓存内容"
+                        headerInfo = ContentNode.HeaderNode(
+                            post.title,
+                            post.author,
+                            post.avatar,
+                            ""
+                        )
+                        momentImages = post.images
+                        fullDescription = post.description
+                        momentHasVideo = false
+                        viewMode = "moment"
+                    }
+                    FileLogger.write(
+                        context,
+                        "PostDetailFallback",
+                        "status=missing_link, linkId=${post.linkId}"
+                    )
+                    return@withContext
+                }
 
                 val userObj = linkObj.optJSONObject("user")
                 val authorName = userObj?.optString("username") ?: post.author
@@ -281,6 +326,18 @@ fun PostDetailScreen(post: HeyPost, onBack: () -> Unit) {
         } else {
             ScalingLazyColumn(modifier = Modifier.fillMaxSize(), anchorType = ScalingLazyListAnchorType.ItemStart) {
                 item { Button(onClick = onBack, colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF333333)), modifier = Modifier.height(32.dp).padding(bottom = 5.dp)) { Text("返回列表", fontSize = 11.sp) } }
+
+                if (warningMsg.isNotEmpty()) {
+                    item {
+                        Text(
+                            text = warningMsg,
+                            color = Color(0xFFFFC107),
+                            fontSize = 11.sp,
+                            lineHeight = 15.sp,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
+                        )
+                    }
+                }
 
                 if (headerInfo != null) {
                     item {
