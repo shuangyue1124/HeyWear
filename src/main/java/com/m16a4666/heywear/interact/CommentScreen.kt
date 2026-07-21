@@ -22,6 +22,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.wear.compose.foundation.SwipeToDismissValue
+import androidx.wear.compose.foundation.rememberSwipeToDismissBoxState
 import androidx.wear.compose.foundation.lazy.ScalingLazyColumn
 import androidx.wear.compose.foundation.lazy.ScalingLazyListAnchorType
 import androidx.wear.compose.foundation.lazy.itemsIndexed
@@ -30,14 +32,14 @@ import androidx.wear.compose.material.*
 import coil.compose.AsyncImage
 import com.m16a4666.heywear.model.HeyComment
 import com.m16a4666.heywear.utils.CookieUtil
+import com.m16a4666.heywear.utils.DeviceUtil
+import com.m16a4666.heywear.utils.HeyboxHttpClient
 import com.m16a4666.heywear.utils.HeyboxSigner
-import com.m16a4666.heywear.utils.ImageSaver
+import com.m16a4666.heywear.utils.requireHeyboxApiOk
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
-import java.net.HttpURLConnection
-import java.net.URL
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -58,6 +60,7 @@ fun CommentScreen(linkId: String, onBack: () -> Unit) {
     var showFullImage by remember { mutableStateOf<String?>(null) }
 
     val scope = rememberCoroutineScope()
+    val saveImage = rememberImageSaveAction()
 
     // 解析
     fun parseJsonToComment(c: JSONObject): HeyComment {
@@ -107,14 +110,13 @@ fun CommentScreen(linkId: String, onBack: () -> Unit) {
                 val baseParams = "os_type=web&app=heybox&client_type=web&version=999.0.4&web_version=2.5&x_client_type=web&x_app=heybox_website&heybox_id=&x_os_type=Windows&limit=20&owner_only=0"
                 val url = "https://api.xiaoheihe.cn$path?link_id=$linkId&page=$page&$baseParams&_time=$time&nonce=$nonce&hkey=$hkey"
 
-                val conn = URL(url).openConnection() as HttpURLConnection
-                conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0")
-                conn.setRequestProperty("Referer", "https://www.xiaoheihe.cn/")
-                if (cookie.isNotEmpty()) conn.setRequestProperty("Cookie", cookie)
-
-                val jsonStr = conn.inputStream.bufferedReader().readText()
-                val root = JSONObject(jsonStr)
-                if (root.optString("status") == "failed") throw Exception(root.optString("msg"))
+                val response = HeyboxHttpClient.get(
+                    url = url,
+                    userAgent = DeviceUtil.getRandomUA(),
+                    cookie = cookie
+                )
+                val root = JSONObject(response.body)
+                requireHeyboxApiOk(root.optString("status"), root.optString("msg"))
 
                 val result = root.optJSONObject("result")
                 val commentsArray = result?.optJSONArray("comments")
@@ -148,8 +150,10 @@ fun CommentScreen(linkId: String, onBack: () -> Unit) {
                     isLoading = false; statusText = ""
                 }
             } catch (e: Exception) {
-                e.printStackTrace()
-                withContext(Dispatchers.Main) { statusText = "加载结束"; isLoading = false }
+                withContext(Dispatchers.Main) {
+                    statusText = "加载失败: ${e.message ?: "网络异常"}"
+                    isLoading = false
+                }
             }
         }
     }
@@ -200,7 +204,8 @@ fun CommentScreen(linkId: String, onBack: () -> Unit) {
                 ReplyDetailScreen(
                     parent = focusedComment!!,
                     onBack = { focusedComment = null },
-                    onImageClick = { url -> showFullImage = url }
+                    onImageClick = { url -> showFullImage = url },
+                    onImageLongClick = saveImage
                 )
             }
         }
@@ -226,7 +231,8 @@ fun CommentScreen(linkId: String, onBack: () -> Unit) {
                 CommentCard(
                     comment = comment,
                     onClick = { focusedComment = comment },
-                    onImageClick = { url -> showFullImage = url }
+                    onImageClick = { url -> showFullImage = url },
+                    onImageLongClick = saveImage
                 )
             }
 
@@ -255,10 +261,9 @@ fun CommentScreen(linkId: String, onBack: () -> Unit) {
 fun CommentCard(
     comment: HeyComment,
     onClick: () -> Unit,
-    onImageClick: (String) -> Unit
+    onImageClick: (String) -> Unit,
+    onImageLongClick: (String) -> Unit
 ) {
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
     val inlineContentMap = remember { RichTextHelper.getInlineContentMap() }
     val richContent = remember(comment.content) { RichTextHelper.buildSpannedString(comment.content) }
 
@@ -297,7 +302,7 @@ fun CommentCard(
                         .clip(RoundedCornerShape(6.dp))
                         .combinedClickable(
                             onClick = { onImageClick(originalUrl) },
-                            onLongClick = { scope.launch { ImageSaver.saveImage(context, originalUrl) } }
+                            onLongClick = { onImageLongClick(originalUrl) }
                         )
                 )
             }
@@ -337,10 +342,9 @@ fun CommentCard(
 fun ReplyDetailScreen(
     parent: HeyComment,
     onBack: () -> Unit,
-    onImageClick: (String) -> Unit
+    onImageClick: (String) -> Unit,
+    onImageLongClick: (String) -> Unit
 ) {
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
     val inlineContentMap = remember { RichTextHelper.getInlineContentMap() }
 
     ScalingLazyColumn(
@@ -378,7 +382,7 @@ fun ReplyDetailScreen(
                             .clip(RoundedCornerShape(8.dp))
                             .combinedClickable(
                                 onClick = { onImageClick(originalUrl) },
-                                onLongClick = { scope.launch { ImageSaver.saveImage(context, originalUrl) } }
+                                onLongClick = { onImageLongClick(originalUrl) }
                             )
                     )
                 }
@@ -424,7 +428,7 @@ fun ReplyDetailScreen(
                                 .clip(RoundedCornerShape(6.dp))
                                 .combinedClickable(
                                     onClick = { onImageClick(originalUrl) },
-                                    onLongClick = { scope.launch { ImageSaver.saveImage(context, originalUrl) } }
+                                    onLongClick = { onImageLongClick(originalUrl) }
                                 )
                         )
                     }

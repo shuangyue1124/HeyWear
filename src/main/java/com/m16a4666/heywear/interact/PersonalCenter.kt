@@ -13,6 +13,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.wear.compose.foundation.SwipeToDismissValue
+import androidx.wear.compose.foundation.rememberSwipeToDismissBoxState
 import androidx.wear.compose.foundation.lazy.ScalingLazyColumn
 import androidx.wear.compose.foundation.lazy.ScalingLazyListAnchorType
 import androidx.wear.compose.material.*
@@ -20,13 +22,14 @@ import coil.compose.AsyncImage
 import com.m16a4666.heywear.model.HeyPost
 import com.m16a4666.heywear.model.UserProfile
 import com.m16a4666.heywear.utils.CookieUtil
+import com.m16a4666.heywear.utils.DeviceUtil
 import com.m16a4666.heywear.utils.FileLogger
+import com.m16a4666.heywear.utils.HeyboxHttpClient
 import com.m16a4666.heywear.utils.HeyboxSigner
+import com.m16a4666.heywear.utils.requireHeyboxApiOk
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
-import java.net.HttpURLConnection
-import java.net.URL
 
 @Composable
 fun PersonalCenterScreen(
@@ -59,19 +62,19 @@ fun PersonalCenterScreen(
                 val time = HeyboxSigner.getTime()
                 val nonce = HeyboxSigner.getNonce(time)
                 val hkey = HeyboxSigner.getHkey(path, time, nonce)
-                val baseParams = "os_type=web&app=heybox&client_type=web&version=999.0.4&web_version=2.5&x_client_type=web&x_app=heybox_website&heybox_id=$userId&x_os_type=Windows&device_info=Edge&device_id=83858260b1e14cbd686069b4a5c0b8b3"
+                val deviceId = DeviceUtil.getDeviceId(context)
+                val baseParams = "os_type=web&app=heybox&client_type=web&version=999.0.4&web_version=2.5&x_client_type=web&x_app=heybox_website&heybox_id=$userId&x_os_type=Windows&device_info=Edge&device_id=$deviceId"
                 val url = "https://api.xiaoheihe.cn$path?$baseParams&userid=$userId&hkey=$hkey&_time=$time&nonce=$nonce"
 
-                val conn = URL(url).openConnection() as HttpURLConnection
-                conn.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36 Edg/143.0.0.0")
-                conn.setRequestProperty("Referer", "https://www.xiaoheihe.cn/")
-                conn.setRequestProperty("Cookie", cookie)
+                val response = HeyboxHttpClient.get(
+                    url = url,
+                    userAgent = DeviceUtil.getRandomUA(),
+                    cookie = cookie
+                )
+                FileLogger.logNetwork(context, url, response.code)
 
-                val jsonStr = conn.inputStream.bufferedReader().readText()
-                FileLogger.logNetwork(context, url, conn.responseCode, emptyMap(), jsonStr)
-
-                val root = JSONObject(jsonStr)
-                if (root.optString("status") == "failed") throw Exception("Failed")
+                val root = JSONObject(response.body)
+                requireHeyboxApiOk(root.optString("status"), root.optString("msg"))
 
                 val result = root.getJSONObject("result")
                 val detail = result.getJSONObject("account_detail")
@@ -91,7 +94,6 @@ fun PersonalCenterScreen(
                 )
                 isLoading = false
             } catch (e: Exception) {
-                e.printStackTrace()
                 FileLogger.write(context, "ProfileErr", e.toString())
                 isLoading = false
             }

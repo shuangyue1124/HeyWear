@@ -22,19 +22,21 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.wear.compose.foundation.SwipeToDismissValue
+import androidx.wear.compose.foundation.rememberSwipeToDismissBoxState
 import androidx.wear.compose.foundation.lazy.rememberScalingLazyListState
 import androidx.wear.compose.material.CircularProgressIndicator
 import androidx.wear.compose.material.Scaffold
 import androidx.wear.compose.material.SwipeToDismissBox
-import androidx.wear.compose.material.SwipeToDismissValue
 import androidx.wear.compose.material.Text
 import androidx.wear.compose.material.TimeText
-import androidx.wear.compose.material.rememberSwipeToDismissBoxState
 import androidx.wear.compose.material.scrollAway
 import coil.Coil
 import coil.ImageLoader
 import coil.decode.GifDecoder
 import coil.decode.ImageDecoderDecoder
+import coil.memory.MemoryCache
+import com.m16a4666.heywear.BuildConfig
 import com.m16a4666.heywear.model.HeyPost
 import com.m16a4666.heywear.utils.CookieUtil
 import com.m16a4666.heywear.utils.CrashHandler
@@ -42,14 +44,14 @@ import com.m16a4666.heywear.utils.DebugLogger
 import com.m16a4666.heywear.utils.DebugOverlay
 import com.m16a4666.heywear.utils.DeviceUtil
 import com.m16a4666.heywear.utils.FileLogger
+import com.m16a4666.heywear.utils.HeyboxHttpClient
 import com.m16a4666.heywear.utils.HeyboxSigner
 import com.m16a4666.heywear.utils.SettingsUtil
+import com.m16a4666.heywear.utils.requireHeyboxApiOk
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
-import java.net.HttpURLConnection
-import java.net.URL
 
 class MainActivity : ComponentActivity() {
     companion object { var GlobalCookie = "" }
@@ -57,8 +59,17 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         CrashHandler.init(this)
-        FileLogger.write(this, "System", "App Created (v0.3.5)")
+        FileLogger.write(this, "System", "App Created (${BuildConfig.VERSION_NAME})")
         val imageLoader = ImageLoader.Builder(this)
+            .memoryCache {
+                MemoryCache.Builder(this)
+                    .maxSizePercent(0.05)
+                    .build()
+            }
+            .diskCache(null)
+            .bitmapFactoryMaxParallelism(1)
+            .allowRgb565(true)
+            .networkObserverEnabled(false)
             .components {
                 if (Build.VERSION.SDK_INT >= 28) add(ImageDecoderDecoder.Factory())
                 else add(GifDecoder.Factory())
@@ -147,7 +158,6 @@ fun MainContent(
                     isLoading = false
                 }
             } catch (e: Exception) {
-                e.printStackTrace()
                 withContext(Dispatchers.Main) { statusText = if(postList.isEmpty()) "加载失败" else ""; isLoading = false }
             }
         }
@@ -246,22 +256,11 @@ private fun fetchFeedData(context: android.content.Context, cookie: String, offs
     val hkey = HeyboxSigner.getHkey(urlPath, time, nonce)
     val finalUrl = "https://api.xiaoheihe.cn$urlPath?$baseParams&_time=$time&nonce=$nonce&hkey=$hkey"
 
-    val conn = URL(finalUrl).openConnection() as java.net.HttpURLConnection
-    conn.requestMethod = "GET"
-    conn.setRequestProperty("User-Agent", randomUA)
-    conn.setRequestProperty("Referer", "https://www.xiaoheihe.cn/")
-    if (cookie.isNotEmpty()) conn.setRequestProperty("Cookie", cookie)
+    val response = HeyboxHttpClient.get(finalUrl, randomUA, cookie)
+    FileLogger.logNetwork(context, finalUrl, response.code)
 
-    conn.connect()
-    val jsonStr = conn.inputStream.bufferedReader().readText()
-    FileLogger.logNetwork(context, finalUrl, conn.responseCode, emptyMap(), jsonStr.take(500))
-
-    val root = JSONObject(jsonStr)
-    if (root.optString("status") == "failed") {
-        val msg = root.optString("msg")
-        DebugLogger.log("API_FAIL", msg)
-        throw Exception("API: $msg")
-    }
+    val root = JSONObject(response.body)
+    requireHeyboxApiOk(root.optString("status"), root.optString("msg"))
 
     val linksArray = root.optJSONObject("result")?.optJSONArray("links") ?: return emptyList()
     val list = mutableListOf<HeyPost>()

@@ -15,14 +15,13 @@ import androidx.wear.compose.material.*
 import com.m16a4666.heywear.model.HeyPost
 import com.m16a4666.heywear.utils.CookieUtil
 import com.m16a4666.heywear.utils.DeviceUtil
-import com.m16a4666.heywear.utils.FileLogger
+import com.m16a4666.heywear.utils.HeyboxHttpClient
 import com.m16a4666.heywear.utils.HeyboxSigner
+import com.m16a4666.heywear.utils.requireHeyboxApiOk
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
-import java.net.HttpURLConnection
-import java.net.URL
 
 @Composable
 fun UserContentScreen(
@@ -56,7 +55,7 @@ fun UserContentScreen(
                 val userId = CookieUtil.getUserId(context)
                 val cookie = CookieUtil.getCookie(context)
                 val deviceId = DeviceUtil.getDeviceId(context)
-                val ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0"
+                val ua = DeviceUtil.getRandomUA()
 
                 var finalUrl = ""
 
@@ -71,12 +70,9 @@ fun UserContentScreen(
                     val p1 = "os_type=web&app=heybox&client_type=web&version=999.0.4&web_version=2.5&x_client_type=web&x_app=heybox_website&x_os_type=Windows&heybox_id=$userId&userid=$userId&enable_new_style_collect=1"
                     val url1 = "https://api.xiaoheihe.cn$folderPath?$p1&hkey=$k1&_time=$t1&nonce=$n1"
 
-                    val conn1 = URL(url1).openConnection() as HttpURLConnection
-                    conn1.setRequestProperty("Cookie", cookie); conn1.setRequestProperty("User-Agent", ua)
-                    val json1 = conn1.inputStream.bufferedReader().readText()
-
-                    val root1 = JSONObject(json1)
-                    if (root1.optString("status") == "failed") throw Exception("收藏列表失败: ${root1.optString("msg")}")
+                    val folderResponse = HeyboxHttpClient.get(url1, ua, cookie)
+                    val root1 = JSONObject(folderResponse.body)
+                    requireHeyboxApiOk(root1.optString("status"), root1.optString("msg"))
 
                     val folders = root1.optJSONObject("result")?.optJSONArray("folders")
                     if (folders == null || folders.length() == 0) throw Exception("没有找到收藏夹")
@@ -110,17 +106,9 @@ fun UserContentScreen(
                 }
 
                 // 发起请求
-                val conn = URL(finalUrl).openConnection() as HttpURLConnection
-                conn.setRequestProperty("User-Agent", ua)
-                conn.setRequestProperty("Referer", "https://www.xiaoheihe.cn/")
-                conn.setRequestProperty("Cookie", cookie)
-
-                val jsonStr = conn.inputStream.bufferedReader().readText()
-                val root = JSONObject(jsonStr)
-
-                // FileLogger.logNetwork(context, finalUrl, conn.responseCode, emptyMap(), jsonStr.take(500))
-
-                if (root.optString("status") != "ok") throw Exception("API Error: ${root.optString("msg")}")
+                val response = HeyboxHttpClient.get(finalUrl, ua, cookie)
+                val root = JSONObject(response.body)
+                requireHeyboxApiOk(root.optString("status"), root.optString("msg"))
 
                 // 解析列表
                 val newPosts = mutableListOf<HeyPost>()
@@ -239,7 +227,6 @@ fun UserContentScreen(
                     isLoading = false
                 }
             } catch (e: Exception) {
-                e.printStackTrace()
                 withContext(Dispatchers.Main) { statusText = "加载失败: ${e.message}"; isLoading = false }
             }
         }

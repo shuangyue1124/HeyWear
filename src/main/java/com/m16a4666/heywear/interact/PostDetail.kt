@@ -1,13 +1,6 @@
 package com.m16a4666.heywear.interact
 
-import android.Manifest
-import android.content.pm.PackageManager
-import android.os.Build
 import android.text.Html
-import android.util.Log
-import android.widget.Toast
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -33,7 +26,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
-import androidx.core.content.ContextCompat
+import androidx.wear.compose.foundation.SwipeToDismissValue
+import androidx.wear.compose.foundation.rememberSwipeToDismissBoxState
 import androidx.wear.compose.foundation.lazy.ScalingLazyColumn
 import androidx.wear.compose.foundation.lazy.ScalingLazyListAnchorType
 import androidx.wear.compose.foundation.lazy.items
@@ -45,8 +39,8 @@ import com.m16a4666.heywear.utils.CookieUtil
 import com.m16a4666.heywear.utils.DeviceUtil
 import com.m16a4666.heywear.utils.FileLogger
 import com.m16a4666.heywear.utils.HeyboxApiStatus
+import com.m16a4666.heywear.utils.HeyboxHttpClient
 import com.m16a4666.heywear.utils.HeyboxSigner
-import com.m16a4666.heywear.utils.ImageSaver
 import com.m16a4666.heywear.utils.SettingsUtil
 import com.m16a4666.heywear.utils.evaluateHeyboxApiStatus
 import kotlinx.coroutines.Dispatchers
@@ -55,8 +49,6 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import org.jsoup.Jsoup
-import java.net.HttpURLConnection
-import java.net.URL
 import java.text.SimpleDateFormat
 import java.util.*
 import java.util.regex.Pattern
@@ -65,6 +57,7 @@ import java.util.regex.Pattern
 @Composable
 fun PostDetailScreen(post: HeyPost, onBack: () -> Unit) {
     val context = LocalContext.current
+    val saveImage = rememberImageSaveAction()
     val inlineContentMap = remember { RichTextHelper.getInlineContentMap() }
     val isGlobalNoImage = remember { SettingsUtil.isNoImageMode(context) }
 
@@ -75,7 +68,6 @@ fun PostDetailScreen(post: HeyPost, onBack: () -> Unit) {
     var momentHasVideo by remember { mutableStateOf(false) }
 
     var viewMode by remember { mutableStateOf("loading") }
-    var errorMsg by remember { mutableStateOf("") }
     var warningMsg by remember { mutableStateOf("") }
     var showFullImage by remember { mutableStateOf<String?>(null) }
 
@@ -136,6 +128,14 @@ fun PostDetailScreen(post: HeyPost, onBack: () -> Unit) {
 
     // 联网解析
     LaunchedEffect(post.linkId) {
+        warningMsg = ""
+        headerInfo = null
+        contentNodes = emptyList()
+        momentImages = emptyList()
+        fullDescription = ""
+        momentHasVideo = false
+        viewMode = "loading"
+
         withContext(Dispatchers.IO) {
             try {
                 val path = "/bbs/app/link/tree"
@@ -151,14 +151,8 @@ fun PostDetailScreen(post: HeyPost, onBack: () -> Unit) {
                 val baseParams = "os_type=web&app=heybox&client_type=web&version=999.0.4&web_version=2.5&x_client_type=web&x_app=heybox_website&heybox_id=&x_os_type=Windows&device_info=Chrome&device_id=$deviceId"
                 val url = "https://api.xiaoheihe.cn$path?link_id=${post.linkId}&$baseParams&_time=$time&nonce=$nonce&hkey=$hkey"
 
-                val conn = URL(url).openConnection() as HttpURLConnection
-                // 设置 UA
-                conn.setRequestProperty("User-Agent", randomUA)
-                conn.setRequestProperty("Referer", "https://www.xiaoheihe.cn/")
-                if (cookie.isNotEmpty()) conn.setRequestProperty("Cookie", cookie)
-
-                val jsonStr = conn.inputStream.bufferedReader().readText()
-                val root = JSONObject(jsonStr)
+                val response = HeyboxHttpClient.get(url, randomUA, cookie)
+                val root = JSONObject(response.body)
 
                 val apiStatus = evaluateHeyboxApiStatus(
                     status = root.optString("status"),
@@ -166,7 +160,7 @@ fun PostDetailScreen(post: HeyPost, onBack: () -> Unit) {
                 )
                 if (apiStatus is HeyboxApiStatus.Rejected) {
                     withContext(Dispatchers.Main) {
-                        warningMsg = "${apiStatus.message}，已显示列表中的缓存内容"
+                        warningMsg = "${apiStatus.message}，已显示首页列表摘要"
                         headerInfo = ContentNode.HeaderNode(
                             post.title,
                             post.author,
@@ -190,7 +184,7 @@ fun PostDetailScreen(post: HeyPost, onBack: () -> Unit) {
                 val linkObj = resultObj?.optJSONObject("link")
                 if (linkObj == null) {
                     withContext(Dispatchers.Main) {
-                        warningMsg = "详情接口未返回帖子内容，已显示列表中的缓存内容"
+                        warningMsg = "详情接口未返回帖子内容，已显示首页列表摘要"
                         headerInfo = ContentNode.HeaderNode(
                             post.title,
                             post.author,
@@ -223,7 +217,7 @@ fun PostDetailScreen(post: HeyPost, onBack: () -> Unit) {
                 val textRaw = linkObj.optString("text")
                 var jsonArray = JSONArray()
                 if (textRaw.isNotEmpty() && textRaw.startsWith("[")) {
-                    try { jsonArray = JSONArray(textRaw) } catch (e: Exception) { e.printStackTrace() }
+                    try { jsonArray = JSONArray(textRaw) } catch (_: Exception) { }
                 }
 
                 val isArticleMode = (useConceptType == 0)
@@ -306,10 +300,24 @@ fun PostDetailScreen(post: HeyPost, onBack: () -> Unit) {
                     viewMode = "moment"
                 }
             } catch (e: Exception) {
-                e.printStackTrace()
-                errorMsg = e.message ?: "Error"
-                viewMode = "error"
-                FileLogger.write(context, "PostDetailCrash", e.stackTraceToString())
+                withContext(Dispatchers.Main) {
+                    warningMsg = "详情加载失败，已显示首页列表摘要"
+                    headerInfo = ContentNode.HeaderNode(
+                        post.title,
+                        post.author,
+                        post.avatar,
+                        ""
+                    )
+                    momentImages = post.images
+                    fullDescription = post.description
+                    momentHasVideo = false
+                    viewMode = "moment"
+                }
+                FileLogger.write(
+                    context,
+                    "PostDetailFallback",
+                    "reason=${e.javaClass.simpleName}, linkId=${post.linkId}"
+                )
             }
         }
     }
@@ -318,11 +326,6 @@ fun PostDetailScreen(post: HeyPost, onBack: () -> Unit) {
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         if (viewMode == "loading") {
             CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
-        } else if (viewMode == "error") {
-            ScalingLazyColumn(modifier = Modifier.fillMaxSize(), anchorType = ScalingLazyListAnchorType.ItemStart) {
-                item { Button(onClick = onBack, colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF333333)), modifier = Modifier.height(30.dp)) { Text("返回", fontSize = 11.sp) } }
-                item { Text(errorMsg, color = Color.Red, fontSize = 12.sp, modifier = Modifier.padding(20.dp)) }
-            }
         } else {
             ScalingLazyColumn(modifier = Modifier.fillMaxSize(), anchorType = ScalingLazyListAnchorType.ItemStart) {
                 item { Button(onClick = onBack, colors = ButtonDefaults.buttonColors(backgroundColor = Color(0xFF333333)), modifier = Modifier.height(32.dp).padding(bottom = 5.dp)) { Text("返回列表", fontSize = 11.sp) } }
@@ -382,7 +385,8 @@ fun PostDetailScreen(post: HeyPost, onBack: () -> Unit) {
                                     url = cleanUrl,
                                     isGlobalNoImage = isGlobalNoImage,
                                     isVideo = isVideo,
-                                    onFullClick = { showFullImage = cleanUrl }
+                                    onFullClick = { showFullImage = cleanUrl },
+                                    onSave = saveImage
                                 )
                             }
                             else -> {}
@@ -400,7 +404,8 @@ fun PostDetailScreen(post: HeyPost, onBack: () -> Unit) {
                                         url = imgUrl,
                                         isGlobalNoImage = isGlobalNoImage,
                                         isVideo = isVideo,
-                                        onFullClick = { showFullImage = imgUrl.split("?")[0] }
+                                        onFullClick = { showFullImage = imgUrl.split("?")[0] },
+                                        onSave = saveImage
                                     )
                                 }
                                 if (momentImages.size > 1) Text("${pagerState.currentPage + 1}/${momentImages.size}", color = Color.White, fontSize = 10.sp, modifier = Modifier.padding(4.dp).background(Color.Black.copy(0.6f), RoundedCornerShape(4.dp)).padding(2.dp))
@@ -438,28 +443,15 @@ fun SmartImage(
     url: String,
     isGlobalNoImage: Boolean,
     isVideo: Boolean,
-    onFullClick: () -> Unit
+    onFullClick: () -> Unit,
+    onSave: (String) -> Unit
 ) {
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-
     var isRevealed by remember { mutableStateOf(false) }
 
     val thumbUrl = if (url.contains("?")) url + "/thumbnail/500x" else url + "?imageMogr2/thumbnail/500x"
     val originalUrl = url.split("?")[0]
 
     val shouldShow = !isGlobalNoImage || isRevealed
-
-    // 权限请求
-    val permissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { isGranted ->
-        if (isGranted) {
-            scope.launch { ImageSaver.saveImage(context, originalUrl) }
-        } else {
-            Toast.makeText(context, "需要存储权限才能保存", Toast.LENGTH_SHORT).show()
-        }
-    }
 
     if (!shouldShow) {
         Box(
@@ -497,17 +489,7 @@ fun SmartImage(
                     .clip(RoundedCornerShape(8.dp))
                     .combinedClickable(
                         onClick = { onFullClick() },
-                        onLongClick = {
-                            if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.P) {
-                                if (ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED) {
-                                    scope.launch { ImageSaver.saveImage(context, originalUrl) }
-                                } else {
-                                    permissionLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
-                                }
-                            } else {
-                                scope.launch { ImageSaver.saveImage(context, originalUrl) }
-                            }
-                        }
+                        onLongClick = { onSave(originalUrl) }
                     )
             )
             if (isVideo) {

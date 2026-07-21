@@ -16,9 +16,6 @@ import androidx.wear.compose.material.*
 import coil.imageLoader
 import com.m16a4666.heywear.utils.CookieUtil
 import com.m16a4666.heywear.utils.SettingsUtil
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 @Composable
 fun SettingsScreen(
@@ -29,18 +26,10 @@ fun SettingsScreen(
     onSettingChanged: () -> Unit
 ) {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
 
     var isNoImage by remember { mutableStateOf(SettingsUtil.isNoImageMode(context)) }
     var isShowTime by remember { mutableStateOf(SettingsUtil.isShowTime(context)) }
     var isSwipeDisabled by remember { mutableStateOf(SettingsUtil.isSwipeDisabled(context)) }
-
-    var cacheSizeText by remember { mutableStateOf("计算中...") }
-
-    LaunchedEffect(Unit) {
-        val sizeBytes = context.cacheDir.walkTopDown().filter { it.isFile }.map { it.length() }.sum()
-        cacheSizeText = "${sizeBytes / 1024 / 1024}MB"
-    }
 
     ScalingLazyColumn(modifier = Modifier.fillMaxSize().background(Color(0xFF111111)), anchorType = ScalingLazyListAnchorType.ItemStart) {
         item { Text("设置", color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(bottom = 10.dp)) }
@@ -96,18 +85,11 @@ fun SettingsScreen(
         item {
             Chip(
                 onClick = {
-                    scope.launch(Dispatchers.IO) {
-                        context.imageLoader.memoryCache?.clear()
-                        context.imageLoader.diskCache?.clear()
-                        context.cacheDir.deleteRecursively()
-                        withContext(Dispatchers.Main) {
-                            cacheSizeText = "0MB"
-                            Toast.makeText(context, "缓存已清空", Toast.LENGTH_SHORT).show()
-                        }
-                    }
+                    context.imageLoader.memoryCache?.clear()
+                    Toast.makeText(context, "图片内存已释放", Toast.LENGTH_SHORT).show()
                 },
-                label = { Text("清空缓存") },
-                secondaryLabel = { Text(cacheSizeText, fontSize = 10.sp) },
+                label = { Text("释放图片内存") },
+                secondaryLabel = { Text("不保留磁盘图片缓存", fontSize = 10.sp) },
                 colors = ChipDefaults.secondaryChipColors(),
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp)
             )

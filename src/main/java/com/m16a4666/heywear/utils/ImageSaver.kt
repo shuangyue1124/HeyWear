@@ -9,25 +9,30 @@ import android.os.Environment
 import android.provider.MediaStore
 import android.widget.Toast
 import androidx.core.graphics.drawable.toBitmap
-import coil.ImageLoader
+import coil.imageLoader
 import coil.request.ImageRequest
 import coil.request.SuccessResult
+import coil.size.Scale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
-import java.io.OutputStream
+import java.io.IOException
 
 object ImageSaver {
+    internal const val MAX_IMAGE_DIMENSION = 1280
+    private const val JPEG_QUALITY = 92
 
     suspend fun saveImage(context: Context, url: String) {
         withContext(Dispatchers.IO) {
             try {
                 // 1. 下载图片
-                val loader = ImageLoader(context)
+                val loader = context.imageLoader
                 val request = ImageRequest.Builder(context)
                     .data(url)
                     .allowHardware(false)
+                    .size(MAX_IMAGE_DIMENSION)
+                    .scale(Scale.FIT)
                     .build()
                 val result = (loader.execute(request) as? SuccessResult)?.drawable
                 val bitmap = result?.toBitmap()
@@ -50,9 +55,12 @@ object ImageSaver {
                     saveToLegacyStorage(context, bitmap, filename)
                 }
 
+            } catch (_: OutOfMemoryError) {
+                FileLogger.write(context, "ImageSave", "OutOfMemoryError")
+                showToast(context, "图片过大，无法保存")
             } catch (e: Exception) {
-                e.printStackTrace()
-                showToast(context, "保存出错: ${e.message}")
+                FileLogger.write(context, "ImageSave", e.javaClass.simpleName)
+                showToast(context, "保存失败")
             }
         }
     }
@@ -67,21 +75,30 @@ object ImageSaver {
         }
 
         val resolver = context.contentResolver
-        val imageUri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
+        val imageUri = resolver.insert(
+            MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+            contentValues
+        ) ?: throw IOException("MediaStore insert failed")
 
-        if (imageUri != null) {
-            resolver.openOutputStream(imageUri).use { fos ->
-                bitmap.compress(Bitmap.CompressFormat.JPEG, 100, fos!!)
+        try {
+            val encoded = resolver.openOutputStream(imageUri)?.use { output ->
+                bitmap.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, output)
+            } ?: false
+            if (!encoded) {
+                throw IOException("Image encoding failed")
             }
 
             //写入完成，标记为可见 (IS_PENDING = 0)
             contentValues.clear()
             contentValues.put(MediaStore.MediaColumns.IS_PENDING, 0)
-            resolver.update(imageUri, contentValues, null, null)
+            if (resolver.update(imageUri, contentValues, null, null) <= 0) {
+                throw IOException("MediaStore publish failed")
+            }
 
             showToast(context, "✅ 已保存至图库")
-        } else {
-            throw Exception("MediaStore Uri is null")
+        } catch (e: Exception) {
+            runCatching { resolver.delete(imageUri, null, null) }
+            throw e
         }
     }
 
@@ -91,25 +108,27 @@ object ImageSaver {
         val picturesDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES)
         val heyWearDir = File(picturesDir, "HeyWear")
 
-        if (!heyWearDir.exists()) {
-            heyWearDir.mkdirs()
+        if (!heyWearDir.exists() && !heyWearDir.mkdirs()) {
+            throw IOException("Cannot create image directory")
         }
 
         val imageFile = File(heyWearDir, filename)
-        val fos = FileOutputStream(imageFile)
-
-        fos.use {
-            bitmap.compress(Bitmap.CompressFormat.JPEG, 100, it)
+        try {
+            FileOutputStream(imageFile).use { output ->
+                if (!bitmap.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, output)) {
+                    throw IOException("Image encoding failed")
+                }
+            }
+        } catch (e: Exception) {
+            imageFile.delete()
+            throw e
         }
 
         MediaScannerConnection.scanFile(
             context,
             arrayOf(imageFile.absolutePath),
             arrayOf("image/jpeg")
-        ) { path, uri ->
-            // 扫描完成后回调
-            // Log.d("ImageSaver", "Scanned $path -> $uri")
-        }
+        ) { _, _ -> }
 
         showToast(context, "✅ 已保存图片")
     }

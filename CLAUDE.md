@@ -9,14 +9,17 @@
 
 - Provide a standalone Wear OS client for browsing Xiaoheihe feeds, posts, images, comments, and account content.
 - Keep core reading useful when the upstream detail API requires a browser captcha by falling back to feed data already on the watch.
+- Keep APK size, memory peaks, disk writes, and background work suitable for low-end watches.
 - Preserve watch-friendly controls, local preferences, crash diagnostics, and optional image-saving behavior.
 
 ## Prohibitions
 
-- Do not read `result.link` until the API status is exactly `ok`; rejected or missing payloads must use the cached-post fallback (`HeyboxApiStatus.kt`, `PostDetail.kt`).
-- Do not replace the signer with a placeholder or change it without updating the captured-vector regression test (`HeyboxSignerTest.kt`).
-- Do not commit generated output, local SDK settings, IDE state, or signing keys; the root `.gitignore` defines these boundaries.
-- Keep detail fallback logs limited to status and link ID; do not add the raw response, Cookie, nonce, or hkey to that path.
+- Do not read `result.link` until the API status is exactly `ok`; rejected or missing payloads must use the current in-memory feed-item fallback (`src/main/java/com/m16a4666/heywear/utils/HeyboxApiStatus.kt:19-39`, `src/main/java/com/m16a4666/heywear/interact/PostDetail.kt:161-211`).
+- Do not replace the signer with a placeholder or change it without updating the captured-vector regression test (`src/test/java/com/m16a4666/heywear/utils/HeyboxSignerTest.kt:6-16`).
+- Do not add a database, persistent feed/detail cache, automatic network retries, or a second networking stack unless the user explicitly requests it. Standard API calls must go through the bounded `HeyboxHttpClient` (`docs/architecture/android-app.md:15-25`).
+- Do not enable Coil's disk cache. Keep its memory budget small and image decoding serialized; explicit user-triggered image saving is not a cache and must retain the 1280-pixel decode limit and failure cleanup (`src/main/java/com/m16a4666/heywear/interact/MainActivity.kt:63-78`, `src/main/java/com/m16a4666/heywear/utils/ImageSaver.kt:22-134`).
+- Do not commit generated output, local SDK settings, IDE state, or signing keys; the root `.gitignore:1-11` defines these boundaries.
+- Keep network and detail fallback logs limited to the endpoint, HTTP/business status, and link ID; do not log raw responses, query strings, Cookie, nonce, hkey, or login keys, and retain the 128 KiB Debug log cap (`src/main/java/com/m16a4666/heywear/utils/FileLogger.kt:10-64`, `src/test/java/com/m16a4666/heywear/utils/LoggingPrivacyTest.kt:7-39`).
 
 # Project Documentation Index
 

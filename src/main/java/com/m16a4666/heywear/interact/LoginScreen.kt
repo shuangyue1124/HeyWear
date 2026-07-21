@@ -21,16 +21,17 @@ import androidx.wear.compose.material.Text
 import coil.compose.AsyncImage
 import com.m16a4666.heywear.utils.CookieUtil
 import com.m16a4666.heywear.utils.DebugLogger
+import com.m16a4666.heywear.utils.DeviceUtil
 import com.m16a4666.heywear.utils.FileLogger
+import com.m16a4666.heywear.utils.HeyboxHttpClient
 import com.m16a4666.heywear.utils.HeyboxSigner
 import com.m16a4666.heywear.utils.QrCodeUtil
+import com.m16a4666.heywear.utils.requireHeyboxApiOk
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
-import java.net.HttpURLConnection
-import java.net.URL
 
 @Composable
 fun LoginScreen(
@@ -47,29 +48,18 @@ fun LoginScreen(
             try {
                 // 获取二维码
                 val getQrPath = "/account/get_qrcode_url/"
-                val baseParams = "os_type=web&app=web&client_type=web&version=999.0.4&web_version=2.5&x_client_type=web&x_app=heybox_website&heybox_id=&x_os_type=Windows&device_info=Edge&device_id=83858260b1e14cbd686069b4a5c0b8b3"
+                val deviceId = DeviceUtil.getDeviceId(context)
+                val userAgent = DeviceUtil.getRandomUA()
+                val baseParams = "os_type=web&app=web&client_type=web&version=999.0.4&web_version=2.5&x_client_type=web&x_app=heybox_website&heybox_id=&x_os_type=Windows&device_info=Edge&device_id=$deviceId"
 
                 var time = HeyboxSigner.getTime()
                 var nonce = HeyboxSigner.getNonce(time)
                 var hkey = HeyboxSigner.getHkey(getQrPath, time, nonce)
                 val getQrUrl = "https://api.xiaoheihe.cn$getQrPath?$baseParams&_time=$time&nonce=$nonce&hkey=$hkey&_notip=true"
 
-                // 记录请求 URL
-                FileLogger.write(context, "Login", "Req QR: $getQrUrl")
-
-                val conn1 = URL(getQrUrl).openConnection() as HttpURLConnection
-                conn1.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0")
-                conn1.setRequestProperty("Referer", "https://www.xiaoheihe.cn/")
-
-                val json1 = conn1.inputStream.bufferedReader().readText()
-                val root1 = JSONObject(json1)
-
-                // 记录返回结果
-                FileLogger.write(context, "Login", "Resp QR: $json1")
-
-                if (root1.optString("status") == "failed") {
-                    throw Exception("API Error: ${root1.optString("msg")}")
-                }
+                val qrResponse = HeyboxHttpClient.get(getQrUrl, userAgent)
+                val root1 = JSONObject(qrResponse.body)
+                requireHeyboxApiOk(root1.optString("status"), root1.optString("msg"))
 
                 val resultObj = root1.optJSONObject("result")
                 val rawQrContent = resultObj?.optString("qr_url") ?: ""
@@ -84,7 +74,7 @@ fun LoginScreen(
                 val bitmap = QrCodeUtil.generateBitmap(rawQrContent, 300)
                 qrBitmap = bitmap
                 statusText = "请使用小黑盒App扫码"
-                DebugLogger.log("Login", "QR Ready: $loginKey")
+                DebugLogger.log("Login", "QR ready")
 
                 // 2. 轮询检查状态
                 val checkPath = "/account/qr_state/"
@@ -95,19 +85,16 @@ fun LoginScreen(
                     hkey = HeyboxSigner.getHkey(checkPath, time, nonce)
 
                     val checkUrl = "https://api.xiaoheihe.cn$checkPath?$baseParams&qr=$loginKey&_time=$time&nonce=$nonce&hkey=$hkey"
-                    val connCheck = URL(checkUrl).openConnection() as HttpURLConnection
-                    connCheck.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0")
-                    connCheck.setRequestProperty("Referer", "https://www.xiaoheihe.cn/")
-
-                    val jsonCheck = connCheck.inputStream.bufferedReader().readText()
+                    val checkResponse = HeyboxHttpClient.get(checkUrl, userAgent)
+                    val jsonCheck = checkResponse.body
 
                     // 记录轮询结果
                     if (!jsonCheck.contains("wait")) {
-                        FileLogger.logNetwork(context, checkUrl, connCheck.responseCode, connCheck.headerFields, jsonCheck)
+                        FileLogger.logNetwork(context, checkUrl, checkResponse.code)
                     }
 
                     // 检查Cookie(成功)
-                    val cookies = CookieUtil.parseAndClean(connCheck.headerFields)
+                    val cookies = CookieUtil.parseAndClean(checkResponse.setCookies)
                     if (cookies.contains("user_pkey")) {
                         FileLogger.write(context, "Login", "SUCCESS! Cookie obtained.")
                         DebugLogger.log("Login", "Success! Cookie Found.")
@@ -132,9 +119,11 @@ fun LoginScreen(
                 }
 
             } catch (e: Exception) {
-                e.printStackTrace()
-                // 记录报错
-                FileLogger.write(context, "LoginErr", e.stackTraceToString())
+                FileLogger.write(
+                    context,
+                    "LoginErr",
+                    "${e.javaClass.simpleName}: ${e.message ?: "Unknown"}"
+                )
                 DebugLogger.log("LoginErr", e.message ?: "Unknown")
                 statusText = "Err: ${e.message?.take(20)}"
                 delay(5000)

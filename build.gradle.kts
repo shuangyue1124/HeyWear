@@ -48,6 +48,7 @@ android {
     }
 
     buildFeatures {
+        buildConfig = true
         compose = true
     }
 
@@ -64,7 +65,6 @@ android {
 
 dependencies {
     implementation("androidx.core:core-ktx:1.13.1")
-    implementation("com.google.android.gms:play-services-wearable:18.1.0")
     implementation("androidx.core:core-splashscreen:1.0.1")
     implementation(platform("androidx.compose:compose-bom:2023.08.00"))
     implementation("androidx.activity:activity-compose:1.9.0")
@@ -73,12 +73,12 @@ dependencies {
     implementation("androidx.wear.compose:compose-material:1.3.1")
     implementation("androidx.wear.compose:compose-foundation:1.3.1")
     implementation("androidx.compose.foundation:foundation:1.6.7")
+    implementation("androidx.compose.material:material:1.6.7")
     implementation("io.coil-kt:coil-compose:2.6.0")
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
     implementation("com.google.zxing:core:3.5.1")
     implementation("org.jsoup:jsoup:1.15.4")
-    implementation("androidx.compose.material:material-icons-extended:1.6.7")
     implementation("io.coil-kt:coil-gif:2.6.0")
 
     testImplementation("junit:junit:4.13.2")

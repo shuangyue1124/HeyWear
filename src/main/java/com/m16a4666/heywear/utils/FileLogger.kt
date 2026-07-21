@@ -3,10 +3,20 @@ package com.m16a4666.heywear.utils
 import android.content.Context
 import android.util.Log
 import java.io.File
-import java.io.FileWriter
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+
+internal fun networkEndpointForLog(url: String): String = url.substringBefore('?')
+internal const val MAX_LOG_ENTRY_CHARS = 4_000
+internal const val MAX_LOG_FILE_BYTES = 128 * 1024L
+
+internal fun boundedLogContent(content: String): String = content.take(MAX_LOG_ENTRY_CHARS)
+
+internal fun shouldRotateLogFile(currentBytes: Long, newEntryBytes: Int): Boolean {
+    return newEntryBytes > MAX_LOG_FILE_BYTES ||
+        currentBytes > MAX_LOG_FILE_BYTES - newEntryBytes
+}
 
 object FileLogger {
     private const val FILE_NAME = "heywear_debug.log"
@@ -21,23 +31,26 @@ object FileLogger {
 
         try {
             //路径/sdcard/Android/data/com.m16a4666.heywear/files/heywear_debug.log
-            val logDir = context.getExternalFilesDir(null)
-            if (logDir != null && !logDir.exists()) {
-                logDir.mkdirs()
+            val logDir = context.getExternalFilesDir(null) ?: return
+            if (!logDir.exists() && !logDir.mkdirs()) {
+                return
             }
 
             val logFile = File(logDir, FILE_NAME)
             val time = SimpleDateFormat("MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
+            val safeContent = boundedLogContent(content)
 
             //格式化日志条目
-            val logEntry = "\n[$time] [$tag]\n$content\n--------------------------------\n"
-            Log.d(tag, content)
+            val logEntry = "\n[$time] [$tag]\n$safeContent\n--------------------------------\n"
+            val logBytes = logEntry.toByteArray(Charsets.UTF_8)
+            Log.d(tag, safeContent)
 
             //写入文件部分
-            val writer = FileWriter(logFile, true)
-            writer.append(logEntry)
-            writer.flush()
-            writer.close()
+            if (shouldRotateLogFile(logFile.length(), logBytes.size)) {
+                logFile.writeBytes(logBytes)
+            } else {
+                logFile.appendBytes(logBytes)
+            }
         } catch (e: Exception) {
             e.printStackTrace()
             Log.e(TAG, "Failed to write log: ${e.message}")
@@ -45,36 +58,10 @@ object FileLogger {
     }
 
     //网络请求
-    fun logNetwork(context: Context?, url: String, code: Int, headers: Map<String, List<String>>, body: String) {
+    fun logNetwork(context: Context?, url: String, code: Int) {
         if (!DebugLogger.IS_DEBUG) return
-
-        val sb = StringBuilder()
-        sb.append("URL: $url\n")
-        sb.append("Code: $code\n")
-
-        //查找Cookie头
-        val cookies = headers["Set-Cookie"] ?: headers["set-cookie"]
-
-        if (cookies != null) {
-            sb.append("Set-Cookie Found: ${cookies.size} items\n")
-            cookies.forEach { cookieString ->
-                //只记录前15位不然号被盗就老实了
-                val masked = if (cookieString.length > 15) {
-                    cookieString.take(15) + "******"
-                } else {
-                    "******"
-                }
-                sb.append(" - $masked\n")
-            }
-        } else {
-            sb.append("Set-Cookie: NULL\n")
-        }
-
-        //只记录前1000个字符
-        val truncatedBody = if (body.length > 1000) body.take(1000) + "...(truncated)" else body
-        sb.append("Body: $truncatedBody")
-
-        write(context, "Network", sb.toString())
+        val endpoint = networkEndpointForLog(url)
+        write(context, "Network", "URL: $endpoint\nCode: $code")
     }
 
     //获取日志文件的绝对路径
@@ -85,7 +72,8 @@ object FileLogger {
     //清空日志文件
     fun clear(context: Context) {
         try {
-            val file = File(context.getExternalFilesDir(null), FILE_NAME)
+            val logDir = context.getExternalFilesDir(null) ?: return
+            val file = File(logDir, FILE_NAME)
             if (file.exists()) {
                 file.delete()
             }
