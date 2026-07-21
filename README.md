@@ -52,6 +52,19 @@ gradle --no-daemon testDebugUnitTest assembleDebug
 
 发布构建可使用 `gradle --no-daemon assembleRelease`，产物默认未签名。
 
+### GitHub Actions 自动构建
+
+向 `main` 分支推送 `src/**`、Gradle/ProGuard 配置或工作流本身的变更时，或者在 GitHub Actions 页面手动运行 `Android Build` 时，仓库会使用 JDK 17 和 Gradle 8.9 执行完整质量门：
+
+```text
+testDebugUnitTest lintDebug assembleDebug assembleRelease
+```
+
+构建成功后会上传两个保留 14 天的 artifact：
+
+- `HeyWear-debug-<commit SHA>`：使用 Android 默认调试签名的 Debug APK。
+- `HeyWear-release-unsigned-<commit SHA>`：经过 Release 混淆与资源压缩、但未签名的 APK。
+
 
 
 📜 免责声明

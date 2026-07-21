@@ -3,6 +3,7 @@
 - `gradle --no-daemon testDebugUnitTest` — run the JVM regression tests; this repository does not include a Gradle Wrapper.
 - `gradle --no-daemon assembleDebug` — build the installable debug APK.
 - `gradle --no-daemon assembleRelease` — build the unsigned, minified release APK.
+- `gradle --no-daemon --stacktrace testDebugUnitTest lintDebug assembleDebug assembleRelease` — reproduce the complete GitHub Actions quality gate with JDK 17 and Gradle 8.9.
 - `apltk codegraph --help` — inspect available CodeGraph commands before source exploration when `apltk` is provisioned.
 
 # Project Business Goals
@@ -20,6 +21,8 @@
 - Do not enable Coil's disk cache. Keep its memory budget small and image decoding serialized; explicit user-triggered image saving is not a cache and must retain the 1280-pixel decode limit and failure cleanup (`src/main/java/com/m16a4666/heywear/interact/MainActivity.kt:63-78`, `src/main/java/com/m16a4666/heywear/utils/ImageSaver.kt:22-134`).
 - Do not commit generated output, local SDK settings, IDE state, or signing keys; the root `.gitignore:1-11` defines these boundaries.
 - Keep network and detail fallback logs limited to the endpoint, HTTP/business status, and link ID; do not log raw responses, query strings, Cookie, nonce, hkey, or login keys, and retain the 128 KiB Debug log cap (`src/main/java/com/m16a4666/heywear/utils/FileLogger.kt:10-64`, `src/test/java/com/m16a4666/heywear/utils/LoggingPrivacyTest.kt:7-39`).
+- Keep CI on the single root application module: use unqualified Gradle tasks and `build/outputs/...` artifact paths; do not introduce `:app:*` or `app/build/...` unless a real submodule is added and the architecture documentation is updated (`settings.gradle.kts:1-17`, `.github/workflows/android-build.yml:48-67`).
+- Do not add keystores, signing passwords, release-signing secrets, or release signing configuration to the standard CI workflow; it may upload only the default debug-signed APK and unsigned Release APK (`.github/workflows/android-build.yml:18-19,31-35,51-67`, `docs/principles/build-verification.md:19-25`).
 
 # Project Documentation Index
 
@@ -27,5 +30,6 @@
 - `docs/README.md` — documentation evidence and maintenance rules.
 - `docs/features/content-reading.md` — feed, detail, fallback, image, and comment behavior.
 - `docs/features/account-and-settings.md` — login, personal content, settings, and diagnostics.
-- `docs/architecture/android-app.md` — single-module Android application boundaries and data flow.
+- `docs/architecture/android-app.md` — single-module Android application, data-flow, and automated-build boundaries.
 - `docs/principles/api-error-handling.md` — signed-request, status-gating, fallback, and regression-test conventions.
+- `docs/principles/build-verification.md` — CI quality gate, pinned toolchain, and signing-separation conventions.

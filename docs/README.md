@@ -15,3 +15,4 @@
 - `features/account-and-settings.md` — 登录、个人内容和设置。
 - `architecture/android-app.md` — Android 客户端模块边界与数据流。
 - `principles/api-error-handling.md` — API 状态、签名和降级原则。
+- `principles/build-verification.md` — 自动构建质量门、固定工具链与签名分离原则。

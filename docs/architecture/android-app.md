@@ -4,7 +4,7 @@
 
 项目是单个 Android application 模块，根构建脚本定义应用 ID、SDK、Compose 和依赖，`src/main` 提供唯一应用实现；`settings.gradle.kts` 没有声明其他子模块。
 
-证据：`build.gradle.kts:1-86`、`settings.gradle.kts:1-16`、`src/main/AndroidManifest.xml:11-42`。
+证据：`build.gradle.kts:1-86`、`settings.gradle.kts:1-17`、`src/main/AndroidManifest.xml:11-42`。
 
 ## UI 编排与支持能力分层
 
@@ -35,3 +35,13 @@
 应用通过 HTTPS 调用小黑盒接口，通过 SharedPreferences 只保存 Cookie、设备 ID、用户设置和最近一次崩溃诊断，并通过 Coil 在当前会话加载图片。用户主动保存图片时，Android 10 及以上使用 MediaStore；Android 9 及以下在运行时获得受限的写入权限后保存到公共 Pictures 目录。MediaStore 发布失败会回滚待处理条目。Manifest 声明手表硬件、联网和兼容旧系统所需权限。
 
 证据：`src/main/java/com/m16a4666/heywear/interact/MainActivity.kt:248-263`、`src/main/java/com/m16a4666/heywear/utils/CookieUtil.kt:18-45`、`src/main/java/com/m16a4666/heywear/utils/DeviceUtil.kt:23-32`、`src/main/java/com/m16a4666/heywear/interact/ImageSaveAction.kt:21-50`、`src/main/java/com/m16a4666/heywear/utils/ImageSaver.kt:26-134`、`src/main/AndroidManifest.xml:4-30`。
+
+## 自动构建边界
+
+GitHub Actions 的 `Android Build` 在 `main` 分支收到源码、Gradle/ProGuard 配置或工作流自身的变更时运行，也支持手动触发。并发键按工作流与 Git ref 隔离；工作流只授予仓库内容读取权限，checkout 不保留 Git 凭据。构建环境固定为 Temurin JDK 17 与 Gradle 8.9，并在根应用模块依次执行单元测试、Debug Lint、Debug APK 和 Release APK 构建。
+
+证据：`.github/workflows/android-build.yml:3-23,31-49`、`settings.gradle.kts:1-17`。
+
+成功构建以提交 SHA 命名并上传两个保留 14 天的 artifact：默认调试签名的 Debug APK，以及没有引入发布签名配置的 unsigned Release APK。工作流不接收或保存发布签名密钥。
+
+证据：`.github/workflows/android-build.yml:18-19,31-35,51-67`、`build.gradle.kts:30-38`。
