@@ -21,7 +21,6 @@ import com.m16a4666.heywear.utils.SettingsUtil
 fun SettingsScreen(
     onBack: () -> Unit,
     onLogout: () -> Unit,
-    onOpenDonate: () -> Unit,
     onOpenAbout: () -> Unit,
     onSettingChanged: () -> Unit
 ) {
@@ -95,14 +94,6 @@ fun SettingsScreen(
             )
         }
 
-        item {
-            Chip(
-                onClick = onOpenDonate,
-                label = { Text("支持开发者", color = Color(0xFFFFD700)) },
-                colors = ChipDefaults.secondaryChipColors(),
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp)
-            )
-        }
         item {
             Chip(
                 onClick = onOpenAbout,

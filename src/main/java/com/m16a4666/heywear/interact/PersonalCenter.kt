@@ -41,7 +41,7 @@ fun PersonalCenterScreen(
     var userProfile by remember { mutableStateOf(UserProfile()) }
     var isLoading by remember { mutableStateOf(true) }
 
-    // 覆盖层状态：null, "settings", "donate", "about", "my_content", "fav", "history"
+    // 覆盖层状态：null, "settings", "about", "my_content", "fav", "history"
     var overlayState by remember { mutableStateOf<String?>(null) }
 
     // 联网加载
@@ -204,7 +204,7 @@ fun PersonalCenterScreen(
                 val swipeState = rememberSwipeToDismissBoxState()
                 LaunchedEffect(swipeState.currentValue) {
                     if (swipeState.currentValue == SwipeToDismissValue.Dismissed) {
-                        if (overlayState == "donate" || overlayState == "about") {
+                        if (overlayState == "about") {
                             overlayState = "settings"
                             swipeState.snapTo(SwipeToDismissValue.Default)
                         } else {
@@ -222,11 +222,9 @@ fun PersonalCenterScreen(
                             "settings" -> SettingsScreen(
                                 onBack = { overlayState = null },
                                 onLogout = onLogout,
-                                onOpenDonate = { overlayState = "donate" },
                                 onOpenAbout = { overlayState = "about" },
                                 onSettingChanged = onRefreshSettings
                             )
-                            "donate" -> DonateScreen { overlayState = "settings" }
                             "about" -> AboutScreen { overlayState = "settings" }
 
                             "my_content" -> UserContentScreen(

@@ -4,9 +4,8 @@
 ![alt text](https://img.shields.io/badge/Kotlin-2.0-purple)
 ![alt text](https://img.shields.io/badge/License-MIT-green)
 
-本项目由一名高三学生利用课余时间独立开发完成的Wear OS版本小黑盒
-由于即将面临高考精力不足，开发暂时中止，现将项目开源，如果你有兴趣的话可以研究下
-（虽然写的很石山代码 尽力了）
+本仓库基于 bilibili_m16a4666 原版 HeyWear（MIT License）持续维护，当前由 shuangyue1124 维护。
+它是面向 Wear OS 的第三方小黑盒客户端，优先控制 APK 体积、内存占用、磁盘写入和后台工作量。
 
 实现了哪些功能？
 **1. 浏览与阅读**
@@ -31,7 +30,6 @@
 <img width="1393" height="1345" alt="image" src="https://github.com/user-attachments/assets/01832428-f227-426e-a7d1-008736b2652b" />
 
 
-如果你想接手的话:    
 🚨 关于接口可用性
 
 源码已包含 `HeyboxSigner.kt` 的请求签名实现，并使用回归向量防止算法被误改。
@@ -72,9 +70,8 @@ testDebugUnitTest lintDebug assembleDebug assembleRelease
 App 内展示的所有游戏资讯、帖子、图片、评论等数据版权均归 清枫（北京）科技有限公司 (小黑盒) 所有
 开发者不对因使用本软件导致的任何账号异常、数据泄露等问题负责
 
-写在最后
-本来这个项目是闲暇时刻写着玩的，然后写着写着就做成了现在这个样子，也没想到会有这么多人喜欢
-最后感谢HeyWear社区的各位，小黑盒官方，各位盒U们，还有屏幕前面的你，承蒙厚爱了
+项目沿用原版 HeyWear 的设计与实现，感谢原作者 bilibili_m16a4666 和 HeyWear 社区的贡献。
+当前 fork 由 shuangyue1124 继续维护。
 
 
 <img width="1345" height="1569" alt="image" src="https://github.com/user-attachments/assets/c2b0e475-6fa8-4fdf-a609-99475311ab5c" />

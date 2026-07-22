@@ -14,7 +14,7 @@
 
 **理由**：固定工具链可以减少本地与 CI 的解析、编译和打包差异，使失败结果可复现。
 
-**范例**：`.github/workflows/android-build.yml:28-49`；`build.gradle.kts:1-4,41-48`；`README.md:43-66`。
+**范例**：`.github/workflows/android-build.yml:28-49`；`build.gradle.kts:1-4,41-48`；`README.md:41-64`。
 
 ## 签名分离
 
