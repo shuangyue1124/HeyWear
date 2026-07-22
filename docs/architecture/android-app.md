@@ -38,10 +38,10 @@
 
 ## 自动构建边界
 
-GitHub Actions 的 `Android Build` 在 `main` 分支收到源码、Gradle/ProGuard 配置或工作流自身的变更时运行，也支持手动触发。并发键按工作流与 Git ref 隔离；工作流只授予仓库内容读取权限，checkout 不保留 Git 凭据。构建环境固定为 Temurin JDK 17 与 Gradle 8.9，并在根应用模块依次执行单元测试、Debug Lint、Debug APK 和 Release APK 构建。
+GitHub Actions 的 `Android Build` 在 `main` 分支收到源码、Gradle/ProGuard 配置或工作流自身的变更时运行，也支持手动触发。并发键按工作流与 Git ref 隔离且不取消已经开始的构建；构建任务只继承仓库内容读取权限，checkout 不保留 Git 凭据。构建环境固定为 Temurin JDK 17 与 Gradle 8.9，并在根应用模块依次执行单元测试、Debug Lint、Debug APK 和 Release APK 构建。
 
-证据：`.github/workflows/android-build.yml:3-23,31-49`、`settings.gradle.kts:1-17`。
+证据：`.github/workflows/android-build.yml:3-23,26-49`、`settings.gradle.kts:1-17`。
 
-成功构建以提交 SHA 命名并上传两个保留 14 天的 artifact：默认调试签名的 Debug APK，以及没有引入发布签名配置的 unsigned Release APK。工作流不接收或保存发布签名密钥。
+成功构建以提交 SHA 命名并上传两个保留 14 天的 artifact：默认调试签名的 Debug APK，以及没有引入发布签名配置的 unsigned Release APK。独立发布任务必须等待构建成功，只对 `main` 推送取得仓库内容写权限，下载上述 artifact、生成 SHA-256 校验文件，并以运行号和提交号创建 GitHub prerelease；手动运行不发布。相同运行重试时只接受提交与三个附件均匹配的已有 Release，不覆盖已发布附件。工作流不接收或保存发布签名密钥。
 
-证据：`.github/workflows/android-build.yml:18-19,31-35,51-67`、`build.gradle.kts:30-38`。
+证据：`.github/workflows/android-build.yml:18-23,51-68,69-143`、`build.gradle.kts:30-38`。

@@ -20,7 +20,7 @@ permissions:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   build:
@@ -30,7 +30,7 @@ jobs:
 
     steps:
       - name: Check out source
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           persist-credentials: false
 
@@ -65,3 +65,79 @@ jobs:
           if-no-files-found: error
           retention-days: 14
           compression-level: 0
+
+  release:
+    name: Publish GitHub prerelease
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: write
+
+    steps:
+      - name: Download debug APK
+        uses: actions/download-artifact@v8
+        with:
+          name: HeyWear-debug-${{ github.sha }}
+          path: release-assets
+
+      - name: Download unsigned release APK
+        uses: actions/download-artifact@v8
+        with:
+          name: HeyWear-release-unsigned-${{ github.sha }}
+          path: release-assets
+
+      - name: Generate SHA-256 checksums
+        shell: bash
+        run: (cd release-assets && sha256sum *.apk > SHA256SUMS.txt)
+
+      - name: Create GitHub prerelease
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          short_sha="${GITHUB_SHA::7}"
+          release_tag="build-${GITHUB_RUN_NUMBER}-${short_sha}"
+          release_title="HeyWear automated build #${GITHUB_RUN_NUMBER} (${short_sha})"
+          release_notes="Automated main-branch build for commit ${GITHUB_SHA}.
+
+          - HeyWear-debug.apk is installable with an ephemeral debug signature, but upgrading across CI builds may require uninstalling the older app.
+          - HeyWear-release-unsigned.apk is minified and smaller, but must be signed before installation.
+          - SHA256SUMS.txt contains checksums for both APK files."
+          assets=(
+            "release-assets/HeyWear-debug.apk"
+            "release-assets/HeyWear-release-unsigned.apk"
+            "release-assets/SHA256SUMS.txt"
+          )
+
+          if gh release view "${release_tag}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            tag_sha="$(gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${release_tag}" --jq '.object.sha')"
+            if [[ "${tag_sha}" != "${GITHUB_SHA}" ]]; then
+              echo "Release tag ${release_tag} points to ${tag_sha}, expected ${GITHUB_SHA}." >&2
+              exit 1
+            fi
+
+            existing_assets="$(gh release view "${release_tag}" --repo "${GITHUB_REPOSITORY}" --json assets --jq '.assets[].name')"
+            for asset in "${assets[@]}"; do
+              asset_name="$(basename "${asset}")"
+              if ! grep -Fxq "${asset_name}" <<<"${existing_assets}"; then
+                echo "Existing release ${release_tag} is missing ${asset_name}; refusing to overwrite it." >&2
+                exit 1
+              fi
+            done
+
+            echo "Release ${release_tag} already exists with the expected commit and assets."
+            exit 0
+          fi
+
+          gh release create "${release_tag}" "${assets[@]}" \
+            --repo "${GITHUB_REPOSITORY}" \
+            --target "${GITHUB_SHA}" \
+            --title "${release_title}" \
+            --notes "${release_notes}" \
+            --prerelease \
+            --latest=false

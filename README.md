@@ -50,7 +50,7 @@ gradle --no-daemon testDebugUnitTest assembleDebug
 
 发布构建可使用 `gradle --no-daemon assembleRelease`，产物默认未签名。
 
-### GitHub Actions 自动构建
+### GitHub Actions 自动构建与预发布
 
 向 `main` 分支推送 `src/**`、Gradle/ProGuard 配置或工作流本身的变更时，或者在 GitHub Actions 页面手动运行 `Android Build` 时，仓库会使用 JDK 17 和 Gradle 8.9 执行完整质量门：
 
@@ -62,6 +62,10 @@ testDebugUnitTest lintDebug assembleDebug assembleRelease
 
 - `HeyWear-debug-<commit SHA>`：使用 Android 默认调试签名的 Debug APK。
 - `HeyWear-release-unsigned-<commit SHA>`：经过 Release 混淆与资源压缩、但未签名的 APK。
+
+`main` 分支推送触发的构建成功后，还会自动创建长期保留的 `build-<运行号>-<短提交号>` GitHub prerelease，附带以上两个 APK 和 `SHA256SUMS.txt`；手动运行只生成 14 天 artifact，不发布 Release。Debug APK 可以直接安装但体积较大，且 CI 临时调试签名可能导致不同构建之间无法覆盖安装；unsigned Release APK 体积较小，但必须使用项目专用签名后才能安装。自动构建不会接触或保存发布签名密钥。
+
+预发布产物可在 [GitHub Releases](https://github.com/shuangyue1124/HeyWear/releases) 下载。
 
 
 
